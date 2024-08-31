@@ -5,7 +5,7 @@ from constants import *
 ORIGINAL_SIZE = (272,512)
 WIDTH = 50
 HEIGHT = (WIDTH/ORIGINAL_SIZE[0])*ORIGINAL_SIZE[1]
-SPEED = 1
+SPEED = 0.3
 
 class Player(pygame.sprite.Sprite):
     def __init__(self):
