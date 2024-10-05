@@ -18,8 +18,10 @@ from player import Player
 from webcam import Webcam
 
 
+
+
 class Game:
-    def __init__(self):
+    def __init__(self, paciente):
         self.screen = pygame.display.set_mode([SCREEN_WIDTH, SCREEN_HEIGHT])
         self.clock = pygame.time.Clock()
         self.running = True
@@ -44,6 +46,14 @@ class Game:
         self.background = Background()
 
         self.initialize()
+
+
+        self.paciente = paciente
+        print(f'PACIENTE: {paciente}')
+        self.dni = self.paciente.get('dni')
+        print(f"DNI EN GAME:  {self.dni}")
+
+
 
     def initialize(self):
         self.start_time = pygame.time.get_ticks()  # Inicia el temporizador aquí
@@ -129,15 +139,23 @@ class Game:
         # Obtener la fecha y hora de inicio en el formato deseado
         fecha_inicio = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
+        # Generar un nombre de archivo único basado en la fecha y hora actual
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'game_data_{timestamp}.json'
+
         # Crear la estructura de datos a guardar
         data = {
             "tiempo_total": tiempo_total,
-            "Score": round(self.score / 1000),  # Puntaje redondeado
             "fecha_inicio": fecha_inicio,
+            "Score": round(self.score / 1000),  # Puntaje redondeado
             "datos": [
-                {"Tiempo": i * 100, "Angulo": angle}  # Suponiendo que imprimes ángulos cada 100ms
+                {"Tiempo": i * 100,
+                 "Angulo": angle,
+                 "Tipo": "WRIST"
+                 }  # Suponiendo que imprimes ángulos cada 100ms
                 for i, angle in enumerate(self.angle_trace)
-            ]
+            ],
+            "dni_paciente": self.dni,
         }
 
         # Enviar data a la BD
@@ -150,9 +168,7 @@ class Game:
         else:
             print(f"Error al crear el juego: {response.text}")
 
-        # Generar un nombre de archivo único basado en la fecha y hora actual
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f'game_data_{timestamp}.json'
+
 
         # Guardar los datos en un archivo JSON
         with open(filename, 'w') as file:
