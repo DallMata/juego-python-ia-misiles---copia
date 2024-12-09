@@ -1,7 +1,8 @@
 import pygame
 import sys
 import requests
-from constants import *
+from spaceEvation.constants import *
+
 
 class Login:
     def __init__(self):
@@ -10,28 +11,40 @@ class Login:
         pygame.display.set_caption("Login")
 
         self.font = pygame.font.Font(None, 32)
-        self.label_font = pygame.font.SysFont("courier", 20, bold=True)  # Fuente para el texto "ID:"
-        self.input_box = pygame.Rect(0, 0, 200, 32)
-        self.label_box = pygame.Rect(0, 0, 200, 24)
-        self.color_inactive = pygame.Color('#03A1CF')  # Color de fondo del input cuando está inactivo
-        self.color_active = pygame.Color('#FFBD59')  # Color de fondo del input cuando está activo
-        self.color = self.color_inactive
-        self.text = ''
-        self.active = False
-        self.done = False
+        self.label_font = pygame.font.SysFont("courier", 20, bold=True)
 
+        # Campos de entrada
+        self.dni_box = pygame.Rect(0, 0, 200, 32)
+        self.clave_box = pygame.Rect(0, 0, 200, 32)
+        self.color_inactive = pygame.Color('#03A1CF')
+        self.color_active = pygame.Color('#FFBD59')
+        self.dni_color = self.color_inactive
+        self.clave_color = self.color_inactive
+        self.dni_text = ''
+        self.clave_text = ''
+        self.active_dni = False
+        self.active_clave = False
+
+        # Bandera de estado
+        self.done = False
         self.clock = pygame.time.Clock()
 
-        # Cargar la imagen de fondo
-        self.background_image = pygame.image.load("sprites/KINEPLAY.png")  # Asegúrate de tener la imagen en el directorio
+        # Imagen de fondo
+        self.background_image = pygame.image.load("sprites/KINEPLAY.png")
         self.background_image = pygame.transform.scale(self.background_image, (SCREEN_WIDTH, SCREEN_HEIGHT))
 
-        # Calcular las posiciones centradas
-        self.input_box.center = self.screen.get_rect().center
-        self.input_box.y += 20  # Ajustar verticalmente
-        self.label_box.midbottom = (self.input_box.centerx, self.input_box.top - 5)  # Posicionar el texto "ID:" sobre el campo de texto
+        # Posicionar los campos
+        center = self.screen.get_rect().center
+        self.dni_box.center = center
+        self.dni_box.y -= 40
+        self.clave_box.center = center
+        self.clave_box.y += 40
 
-        self.paciente = None  # Para almacenar los datos del paciente
+        # Etiquetas
+        self.dni_label_box = pygame.Rect(self.dni_box.x, self.dni_box.y - 30, 200, 24)
+        self.clave_label_box = pygame.Rect(self.clave_box.x, self.clave_box.y - 30, 200, 24)
+
+        self.paciente = None
 
     def run(self):
         while not self.done:
@@ -41,63 +54,79 @@ class Login:
                     sys.exit()
 
                 if event.type == pygame.KEYDOWN:
-                    if self.active:
-                        if event.key == pygame.K_RETURN:
-                            # Enviar solicitud para buscar al paciente por DNI
-                            url = f'http://localhost:80/usuarios/pacientes.php?dni={self.text}'
-                            response = requests.get(url)
-
-                            # Verificar la respuesta del servidor
-                            if response.status_code == 200:  # Si el paciente existe
-                                self.paciente = response.json()  # Obtener los datos del paciente
-                                print(f"Paciente encontrado: {self.paciente}")  # Manejar el objeto paciente como quieras
-                                dni = self.paciente.get('dni')
-                                print(f"DNI:  {dni}")
-                                self.done = True  # Continuar con el flujo del juego
-                            else:
-                                print("Paciente no encontrado o error en la solicitud.")
-                                print(f"Error en la solicitud: {response.status_code}, Detalles: {response.text}")
-                                self.text = ''  # Limpiar el campo de texto
-
-                        elif event.key == pygame.K_BACKSPACE:
-                            self.text = self.text[:-1]
+                    if self.active_dni:
+                        if event.key == pygame.K_BACKSPACE:
+                            self.dni_text = self.dni_text[:-1]
                         else:
-                            self.text += event.unicode
+                            self.dni_text += event.unicode
+                    elif self.active_clave:
+                        if event.key == pygame.K_BACKSPACE:
+                            self.clave_text = self.clave_text[:-1]
+                        else:
+                            self.clave_text += event.unicode
+
+                    if event.key == pygame.K_RETURN:
+                        self.dni_text = self.dni_text.strip()
+                        self.clave_text = self.clave_text.strip()
+
+                        if self.dni_text and self.clave_text:
+                            print("Enviando datos de login.")
+
+                            url = 'http://localhost/usuarios/pacientes.php?login=true'
+                            payload = {'dni': self.dni_text, 'clave': self.clave_text}
+                            response = requests.post(url, json=payload)
+
+                            if response.status_code == 200:
+                                print("Login exitoso.")
+                                self.paciente = response.json()['paciente']
+                                print(self.paciente)
+                                self.done = True
+                            else:
+                                print("DNI o clave incorrectos.")
+                                self.dni_text, self.clave_text = '', ''  # Limpiar campos
+                        else:
+                            print("Por favor complete ambos campos.")
 
                 if event.type == pygame.MOUSEBUTTONDOWN:
-                    if self.input_box.collidepoint(event.pos):
-                        self.active = not self.active
+                    if self.dni_box.collidepoint(event.pos):
+                        self.active_dni = True
+                        self.active_clave = False
+                    elif self.clave_box.collidepoint(event.pos):
+                        self.active_clave = True
+                        self.active_dni = False
                     else:
-                        self.active = False
-                    self.color = self.color_active if self.active else self.color_inactive
+                        self.active_dni = self.active_clave = False
 
-            # Dibujar la imagen de fondo redimensionada
+                    self.dni_color = self.color_active if self.active_dni else self.color_inactive
+                    self.clave_color = self.color_active if self.active_clave else self.color_inactive
+
+            # Dibujar la pantalla
             self.screen.blit(self.background_image, (0, 0))
 
-            # Dibujar el texto "ID:" sobre el campo de texto
-            label_text = self.label_font.render("INGRESE SU DNI:", True, (255, 255, 255))
-            self.screen.blit(label_text, self.label_box)
+            # Etiquetas
+            dni_label = self.label_font.render("DNI:", True, (255, 255, 255))
+            clave_label = self.label_font.render("Clave:", True, (255, 255, 255))
+            self.screen.blit(dni_label, self.dni_label_box.topleft)
+            self.screen.blit(clave_label, self.clave_label_box.topleft)
 
-            # Dibujar el campo de texto y el borde
-            txt_surface = self.font.render(self.text, True, (255, 255, 255))  # Color del texto blanco
-            width = max(200, txt_surface.get_width() + 10)
-            self.input_box.w = width
-            self.screen.blit(txt_surface, (self.input_box.x + 5, self.input_box.y + 5))
-            pygame.draw.rect(self.screen, self.color, self.input_box, 2)
+            # Campos de texto
+            dni_surface = self.font.render(self.dni_text, True, (255, 255, 255))
+            clave_surface = self.font.render('*' * len(self.clave_text), True, (255, 255, 255))  # Mostrar asteriscos
+            self.screen.blit(dni_surface, (self.dni_box.x + 5, self.dni_box.y + 5))
+            self.screen.blit(clave_surface, (self.clave_box.x + 5, self.clave_box.y + 5))
+            pygame.draw.rect(self.screen, self.dni_color, self.dni_box, 2)
+            pygame.draw.rect(self.screen, self.clave_color, self.clave_box, 2)
+
             pygame.display.flip()
             self.clock.tick(30)
 
     def get_paciente(self):
-        return self.paciente  # Método para obtener el paciente
+        return self.paciente
+
 
 if __name__ == "__main__":
     login = Login()
     login.run()
-
-    # Aquí puedes acceder al paciente después de que se haya encontrado
     paciente = login.get_paciente()
     if paciente:
-        print("Paciente listo para el juego:", paciente)
-        # Aquí puedes inicializar tu juego y pasarle la información del paciente
-        # game = Game(paciente)
-        # game.run()
+        print("Paciente listo para el juego 1:", paciente)
