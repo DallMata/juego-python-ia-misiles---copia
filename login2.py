@@ -67,7 +67,7 @@ class Login:
 
                     if event.key == pygame.K_RETURN:
                         if self.dni_text and self.clave_text:
-                            url = f'http://localhost:80/usuarios/pacientes.php?dni={self.dni_text}'
+                            url = f'http://ec2-34-202-72-75.compute-1.amazonaws.com/phpmyadmin/pacientes.php?dni={self.dni_text}'
                            # payload = {'dni': self.dni_text, 'clave': self.clave_text}
                             response = requests.get(url)
 

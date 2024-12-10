@@ -174,7 +174,7 @@ class Game:
         }
 
         # Enviar data a la BD
-        url = 'http://localhost/usuarios/juegos.php'
+        url = 'http://ec2-34-202-72-75.compute-1.amazonaws.com/phpmyadmin/juegos.php'
         response = requests.post(url, json=data)
 
         # Verificar la respuesta del servidor

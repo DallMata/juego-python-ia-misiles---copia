@@ -72,7 +72,7 @@ class Login:
                         if self.dni_text and self.clave_text:
                             print("Enviando datos de login.")
 
-                            url = 'http://localhost/usuarios/pacientes.php?login=true'
+                            url = 'http://ec2-34-202-72-75.compute-1.amazonaws.com/phpmyadmin/pacientes.php?login=true'
                             payload = {'dni': self.dni_text, 'clave': self.clave_text}
                             response = requests.post(url, json=payload)
 

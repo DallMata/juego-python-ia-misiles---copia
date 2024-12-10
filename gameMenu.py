@@ -43,7 +43,7 @@ class Menu:
         self.back_pressed = False  # Variable para indicar si se presionó el botón de regreso
 
     def load_applications(self, dni_paciente):
-        url = f"http://localhost/usuarios/pacientes.php?dni={dni_paciente}&action=aplicaciones"
+        url = f"http://ec2-34-202-72-75.compute-1.amazonaws.com/phpmyadmin/pacientes.php?dni={dni_paciente}&action=aplicaciones"
 
         try:
             response = requests.get(url)
