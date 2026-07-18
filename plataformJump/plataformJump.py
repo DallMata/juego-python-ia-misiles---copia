@@ -39,8 +39,24 @@ class Game:
         self.screen = pygame.display.set_mode([SCREEN_WIDTH, SCREEN_HEIGHT])
         self.clock = pygame.time.Clock()
         self.running = True
-        self.pause_image = pygame.image.load('plataformJump/sprites/HandFront.png').convert_alpha()
-        self.pause_image = pygame.transform.scale(self.pause_image, (200, 200))
+        # Imágenes de instrucciones
+        try:
+            self.hand_open_image = self.load_instruction_image(
+                "plataformJump/sprites/mano_palma_abierta.png"
+            )
+
+            self.hand_closed_image = self.load_instruction_image(
+                "plataformJump/sprites/mano_palma_cerrada.png"
+            )
+
+        except Exception as e:
+            print(
+                "[UI] No se pudieron cargar las imágenes de instrucciones:",
+                e
+            )
+
+            self.hand_open_image = None
+            self.hand_closed_image = None
 
         # Hand Landmarks
         self.mp_hands = mp.solutions.hands
@@ -98,12 +114,125 @@ class Game:
 
         self.initialize()
 
+    def load_instruction_image(
+            self,
+            path,
+            max_width=280,
+            max_height=280
+    ):
+        """
+        Carga una imagen transparente y la escala
+        sin deformar su proporción.
+        """
+        image = pygame.image.load(path).convert_alpha()
+
+        original_width = image.get_width()
+        original_height = image.get_height()
+
+        if original_width <= 0 or original_height <= 0:
+            return image
+
+        scale_factor = min(
+            max_width / original_width,
+            max_height / original_height
+        )
+
+        new_width = max(
+            1,
+            int(original_width * scale_factor)
+        )
+
+        new_height = max(
+            1,
+            int(original_height * scale_factor)
+        )
+
+        return pygame.transform.smoothscale(
+            image,
+            (new_width, new_height)
+        )
+
+    def get_intro_animation_frame(self):
+        """
+        Alterna:
+        palma abierta -> palma cerrada
+        """
+        frames = [
+            self.hand_open_image,
+            self.hand_closed_image
+        ]
+
+        elapsed_time = (
+                pygame.time.get_ticks()
+                - self.intro_animation_start
+        )
+
+        frame_index = (
+                              elapsed_time // self.INTRO_FRAME_DURATION
+                      ) % len(frames)
+
+        return frames[int(frame_index)]
+
+    def render_instruction_image(
+            self,
+            image,
+            center_y=None
+    ):
+        if image is None:
+            return
+
+        if center_y is None:
+            center_y = SCREEN_HEIGHT // 2 - 120
+
+        image_rect = image.get_rect(
+            center=(
+                SCREEN_WIDTH // 2,
+                center_y
+            )
+        )
+
+        self.screen.blit(
+            image,
+            image_rect
+        )
     def initialize(self):
         self.player = Player()
-        self.no_hand = False
+        self.no_hand = True
         self.dead = False
-        self.hand_turned = False
+
+        # Estados de orientación
+        self.hand_turned = False  # Estado general: orientación inválida
+        self.hand_sideways = False  # Está mostrando el canto
+        self.hand_tilted = False  # Está inclinada hacia adelante/atrás
+
         self.paused = False
+
+        # Palma/canto:
+        # Un front_score alto significa palma/dorso mirando a cámara.
+        #
+        # Si baja de SIDEWAYS_BAD_ON, se considera que está de costado.
+        # Para recuperarse debe superar SIDEWAYS_BAD_OFF.
+        self.SIDEWAYS_BAD_ON = 0.48
+        self.SIDEWAYS_BAD_OFF = 0.62
+
+        # Inclinación hacia adelante/atrás
+        self.TILT_BAD_ON = 0.88
+        self.TILT_BAD_OFF = 0.72
+
+        # Valores suavizados
+        self.palm_front_score = None
+        self.hand_tilt_ratio = None
+        self.HAND_SMOOTH_ALPHA = 0.15
+
+        # Animación inicial de abrir y cerrar la mano
+        self.has_detected_hand_once = False
+        self.intro_animation_start = pygame.time.get_ticks()
+
+        # Duración de cada postura
+        self.INTRO_FRAME_DURATION = 650
+
+        # Debug
+        self.last_hand_debug_time = 0
 
         self.prev_distance = None
 
@@ -372,21 +501,101 @@ class Game:
             retry_rect = retry.get_rect(center=(SCREEN_WIDTH // 2, (SCREEN_HEIGHT // 2) + 40))
             self.screen.blit(retry, retry_rect)
         elif self.hand_turned:
-            paused_text = self.font.render('Juego Pausado', True, (255, 255, 255), (0, 0, 0))
-            paused_rect = paused_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
-            self.screen.blit(paused_text, paused_rect)
-            resume_text = self.smaller_font.render('Endereza la mano para continuar', True, (200, 200, 200), (0, 0, 0))
-            resume_rect = resume_text.get_rect(center=(SCREEN_WIDTH // 2, (SCREEN_HEIGHT // 2) + 40))
-            self.screen.blit(resume_text, resume_rect)
-            pause_image_rect = self.pause_image.get_rect(center=((SCREEN_WIDTH // 2), (SCREEN_HEIGHT // 2) - 150))
-            self.screen.blit(self.pause_image, pause_image_rect)
+            if self.hand_sideways:
+                msg = "Mostrá la palma de la mano a la cámara"
+            else:
+                msg = "Enderezá la mano para continuar"
+
+            paused_text = self.font.render(
+                "Juego pausado",
+                True,
+                (255, 255, 255),
+                (0, 0, 0)
+            )
+
+            paused_rect = paused_text.get_rect(
+                center=(
+                    SCREEN_WIDTH // 2,
+                    SCREEN_HEIGHT // 2 + 90
+                )
+            )
+
+            self.screen.blit(
+                paused_text,
+                paused_rect
+            )
+
+            resume_text = self.smaller_font.render(
+                msg,
+                True,
+                (220, 220, 220),
+                (0, 0, 0)
+            )
+
+            resume_rect = resume_text.get_rect(
+                center=(
+                    SCREEN_WIDTH // 2,
+                    SCREEN_HEIGHT // 2 + 130
+                )
+            )
+
+            self.screen.blit(
+                resume_text,
+                resume_rect
+            )
+
+            # Para cualquier orientación incorrecta:
+            # siempre mostrar la palma abierta
+            self.render_instruction_image(
+                self.hand_open_image,
+                center_y=SCREEN_HEIGHT // 2 - 90
+            )
         elif self.no_hand:
-            paused_text = self.font.render('Juego Pausado', True, (255, 255, 255), (0, 0, 0))
-            paused_rect = paused_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
-            self.screen.blit(paused_text, paused_rect)
-            resume_text = self.smaller_font.render('Muestra tu mano a la cámara continuar', True, (200, 200, 200), (0, 0, 0))
-            resume_rect = resume_text.get_rect(center=(SCREEN_WIDTH // 2, (SCREEN_HEIGHT // 2) + 40))
-            self.screen.blit(resume_text, resume_rect)
+            paused_text = self.font.render(
+                "Juego pausado",
+                True,
+                (255, 255, 255),
+                (0, 0, 0)
+            )
+
+            paused_rect = paused_text.get_rect(
+                center=(
+                    SCREEN_WIDTH // 2,
+                    SCREEN_HEIGHT // 2 + 90
+                )
+            )
+
+            self.screen.blit(
+                paused_text,
+                paused_rect
+            )
+
+            resume_text = self.smaller_font.render(
+                "Abrí y cerrá la mano frente a la cámara",
+                True,
+                (220, 220, 220),
+                (0, 0, 0)
+            )
+
+            resume_rect = resume_text.get_rect(
+                center=(
+                    SCREEN_WIDTH // 2,
+                    SCREEN_HEIGHT // 2 + 130
+                )
+            )
+
+            self.screen.blit(
+                resume_text,
+                resume_rect
+            )
+
+            if not self.has_detected_hand_once:
+                intro_frame = self.get_intro_animation_frame()
+
+                self.render_instruction_image(
+                    intro_frame,
+                    center_y=SCREEN_HEIGHT // 2 - 90
+                )
 
         pygame.display.flip()
 
@@ -451,6 +660,10 @@ class Game:
             if results.multi_hand_landmarks is not None:
                 self.no_hand = False
 
+                # La animación inicial deja de mostrarse
+                # después de detectar una mano por primera vez
+                self.has_detected_hand_once = True
+
                 # Puede haber etiqueta por mano (Right/Left)
                 hands = results.multi_hand_landmarks
                 labels = results.multi_handedness if results.multi_handedness else [None] * len(hands)
@@ -507,8 +720,8 @@ class Game:
                     a2  = self.calculate_angle(l1,  l2,  l3)
                     a1  = self.calculate_angle(l0,  l1,  l2)
 
-                    # Pausa por orientación: setear bandera y (solo si NO está girada) registrar telemetría
-                    self.hand_turned = self.check_hand_orientation(hand_landmarks)
+                    # Actualizar palma/canto e inclinación en profundidad
+                    self.update_hand_orientation(hand_landmarks)
                     if (not self.hand_turned) and (not self.dead):
                         current_time = pygame.time.get_ticks()
                         if current_time - self.last_angle_print_time >= 200:
@@ -579,11 +792,26 @@ class Game:
                     # Overlay instantáneo correcto
                     self.overlay_is_closed = is_closed_now
 
+
             else:
+
                 # No hay mano este frame
+
                 self.no_hand = True
-                # opcional: podrías setear overlay a abierta
-                # self.overlay_is_closed = False
+
+                self.hand_turned = False
+
+                self.hand_sideways = False
+
+                self.hand_tilted = False
+
+                self.palm_front_score = None
+
+                self.hand_tilt_ratio = None
+
+                # Opcional: visualmente mostrarla como abierta
+
+                self.overlay_is_closed = False
 
             _ = cv2.waitKey(1) & 0xFF
 
@@ -602,7 +830,145 @@ class Game:
             return 0.0
         return angle_deg
 
-    def check_hand_orientation(self, landmarks):
-        index_base = landmarks.landmark[5]
-        pinky_base = landmarks.landmark[17]
-        return abs(index_base.x - pinky_base.x) < 0.03
+    def update_hand_orientation(self, landmarks):
+        """
+        Platform Jump requiere que la palma o el dorso estén orientados
+        hacia la cámara.
+
+        Actualiza:
+            self.hand_sideways
+            self.hand_tilted
+            self.hand_turned
+        """
+
+        lm = landmarks.landmark
+
+        def vector_3d(point_a, point_b):
+            return (
+                lm[point_b].x - lm[point_a].x,
+                lm[point_b].y - lm[point_a].y,
+                lm[point_b].z - lm[point_a].z
+            )
+
+        def vector_length(vector):
+            return math.sqrt(
+                vector[0] ** 2
+                + vector[1] ** 2
+                + vector[2] ** 2
+            )
+
+        def cross_product(vector_a, vector_b):
+            return (
+                vector_a[1] * vector_b[2]
+                - vector_a[2] * vector_b[1],
+
+                vector_a[2] * vector_b[0]
+                - vector_a[0] * vector_b[2],
+
+                vector_a[0] * vector_b[1]
+                - vector_a[1] * vector_b[0]
+            )
+
+        def distance_2d(point_a, point_b):
+            return math.hypot(
+                lm[point_b].x - lm[point_a].x,
+                lm[point_b].y - lm[point_a].y
+            )
+
+        # ==========================================================
+        # 1. DETECTAR PALMA/DORSO FRENTE A CANTO
+        # ==========================================================
+
+        wrist_to_index = vector_3d(0, 5)
+        wrist_to_pinky = vector_3d(0, 17)
+
+        palm_normal = cross_product(
+            wrist_to_index,
+            wrist_to_pinky
+        )
+
+        normal_length = vector_length(palm_normal)
+
+        if normal_length > 1e-6:
+            # Cerca de 1: palma/dorso mirando hacia la cámara.
+            # Cerca de 0: canto mirando hacia la cámara.
+            raw_front_score = (
+                    abs(palm_normal[2]) / normal_length
+            )
+
+            if self.palm_front_score is None:
+                self.palm_front_score = raw_front_score
+            else:
+                self.palm_front_score = (
+                        self.HAND_SMOOTH_ALPHA * raw_front_score
+                        + (1.0 - self.HAND_SMOOTH_ALPHA)
+                        * self.palm_front_score
+                )
+
+            # Histéresis inversa a Space Evation:
+            # acá queremos que la palma mire a cámara.
+            if not self.hand_sideways:
+                if self.palm_front_score <= self.SIDEWAYS_BAD_ON:
+                    self.hand_sideways = True
+            else:
+                if self.palm_front_score >= self.SIDEWAYS_BAD_OFF:
+                    self.hand_sideways = False
+
+        # ==========================================================
+        # 2. DETECTAR INCLINACIÓN HACIA ADELANTE/ATRÁS
+        # ==========================================================
+
+        palm_width_2d = distance_2d(5, 17)
+        palm_length_2d = distance_2d(0, 9)
+
+        if palm_length_2d > 1e-6:
+            raw_tilt_ratio = palm_width_2d / palm_length_2d
+
+            if self.hand_tilt_ratio is None:
+                self.hand_tilt_ratio = raw_tilt_ratio
+            else:
+                self.hand_tilt_ratio = (
+                        self.HAND_SMOOTH_ALPHA * raw_tilt_ratio
+                        + (1.0 - self.HAND_SMOOTH_ALPHA)
+                        * self.hand_tilt_ratio
+                )
+
+            if not self.hand_tilted:
+                if self.hand_tilt_ratio >= self.TILT_BAD_ON:
+                    self.hand_tilted = True
+            else:
+                if self.hand_tilt_ratio <= self.TILT_BAD_OFF:
+                    self.hand_tilted = False
+
+        # Estado general usado por update(), render() y telemetría
+        self.hand_turned = (
+                self.hand_sideways
+                or self.hand_tilted
+        )
+
+        # Debug temporal
+        current_time = pygame.time.get_ticks()
+
+        if current_time - self.last_hand_debug_time >= 250:
+            front_text = (
+                f"{self.palm_front_score:.3f}"
+                if self.palm_front_score is not None
+                else "None"
+            )
+
+            tilt_text = (
+                f"{self.hand_tilt_ratio:.3f}"
+                if self.hand_tilt_ratio is not None
+                else "None"
+            )
+
+            print(
+                "[PLATFORM HAND] "
+                f"front_score={front_text} | "
+                f"sideways={self.hand_sideways} | "
+                f"tilt_ratio={tilt_text} | "
+                f"tilted={self.hand_tilted} | "
+                f"invalid={self.hand_turned}"
+            )
+
+            self.last_hand_debug_time = current_time
